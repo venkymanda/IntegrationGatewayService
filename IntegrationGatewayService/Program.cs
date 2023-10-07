@@ -9,6 +9,9 @@ using Microsoft.Extensions.Logging;
 using System.Linq;
 using SampleWorkerApp.Helper;
 using System.Reflection;
+using IntegrationGatewayService.Extensions;
+using IntegrationGatewayService.Utilities;
+using IntegrationGatewayService.Services;
 
 class Program
 {
@@ -17,9 +20,10 @@ class Program
         try
         {
 
-
+            //Check if its Service or Console
             var isService = !(Debugger.IsAttached || args.Contains("--console"));
 
+            //Dependency Injection
             var hostBuilder = new HostBuilder()
                 .ConfigureServices((hostContext, services) =>
                 {
@@ -32,13 +36,14 @@ class Program
                     });
                 });
 
-
+            //Run as Windows Service
             if (isService)
             {
                 var host = hostBuilder.UseWindowsService().Build();
                 await host.RunAsync();
 
             }
+            //Run as Console App
             else
             {
                 var host = hostBuilder.Build();
@@ -78,9 +83,12 @@ class Program
             builder.AddConsole();
         });
 
+        services.AddFileManipulators();
+        services.AddTransient<FileManipulatorTypeManager>();
         // Add services
         services.AddSingleton<IAzureRelayService, AzureRelayService>();
         services.AddScoped<IAzureRelayServiceHelper, AzureRelayServiceHelper>();
+        services.AddScoped<IAzureRelayServiceHandler, AzureRelayServiceHandler>();
     }
 
 }

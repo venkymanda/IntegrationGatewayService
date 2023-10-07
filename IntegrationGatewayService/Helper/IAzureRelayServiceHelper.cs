@@ -25,8 +25,20 @@ namespace SampleWorkerApp.Helper
         public void WriteJsonToContextResponse(RelayedHttpListenerContext context, string json);
 
         public string ReadContextRequest(RelayedHttpListenerContext context);
-           
-        }
+
+        public long GetChunkStart(RelayedHttpListenerContext context);
+
+        public long GetTotalFileSize(RelayedHttpListenerContext context);
+
+        public Guid GetFileId(RelayedHttpListenerContext context);
+
+        public long GetChunkSequence(RelayedHttpListenerContext context);
+
+        public void WriteToContextResponse(RelayedHttpListenerContext context, string message, HttpStatusCode statusCode = HttpStatusCode.OK);
+
+
+        public byte[] Decompress(byte[] compressedData);
     }
+}
 
 
