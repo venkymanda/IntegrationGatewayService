@@ -62,7 +62,7 @@ namespace SampleWorkerApp.Helper
                     sw.WriteLine(json);
                 }
             }
-            public  void WriteToContextResponse(RelayedHttpListenerContext context, string message,
+            public  void WriteToContextResponseV2(RelayedHttpListenerContext context, string message,
                 HttpStatusCode statusCode = HttpStatusCode.OK)
             {
                 context.Response.StatusCode = statusCode;
@@ -85,7 +85,119 @@ namespace SampleWorkerApp.Helper
                     return null;
                 }
             }
+
+            public long GetChunkStart(RelayedHttpListenerContext context)
+            {
+                // Extract and return the chunk start position from headers or content
+                // Example: Get from "Content-Range" header
+                string contentRangeHeader = context.Request.Headers.Get("Content-Range");
+                if (!string.IsNullOrEmpty(contentRangeHeader))
+                {
+                    // Parse the content range header to get the start position
+                    // Example: "bytes 0-999/5000"
+                    var parts = contentRangeHeader.Split(' ');
+                    if (parts.Length > 1)
+                    {
+                        var rangeParts = parts[1].Split('-');
+                        if (rangeParts.Length > 0)
+                        {
+                            if (long.TryParse(rangeParts[0], out long start))
+                            {
+                                return start;
+                            }
+                        }
+                    }
+                }
+                return 0;
+            }
+
+        public long GetTotalFileSize(RelayedHttpListenerContext context)
+        {
+            // Extract and return the total file size from headers or content
+            // Example: Get from "Content-Range" header
+            string contentRangeHeader = context.Request.Headers.Get("Content-Range");
+            if (!string.IsNullOrEmpty(contentRangeHeader))
+            {
+                // Parse the content range header to get the total file size
+                // Example: "bytes 0-999/5000"
+                var parts = contentRangeHeader.Split('/');
+                if (parts.Length > 1)
+                {
+                    if (long.TryParse(parts[1], out long totalSize))
+                    {
+                        return totalSize;
+                    }
+                }
+            }
+            return 0;
+        }
+
+
+        // Get the fileId from headers or content (customize as needed)
+        public Guid GetFileId(RelayedHttpListenerContext context)
+        {
+            // Extract and return the fileId from headers or content
+            // Example: Get from "X-File-Id" header
+            string fileIdHeader = context.Request.Headers.Get("X-File-Id");
+            if (!string.IsNullOrEmpty(fileIdHeader) && Guid.TryParse(fileIdHeader, out Guid fileId))
+            {
+                return fileId;
+            }
+
+            // If fileId is not found in headers, you may need to extract it from content or other sources.
+            // Example: Extract from JSON content
+            // string content = ReadContextRequest(context);
+            // Implement fileId extraction logic from content.
+
+            // If fileId cannot be determined, you can return a default Guid or throw an exception.
+            // For demonstration, we return Guid.Empty as a default.
+            return Guid.Empty;
+        }
+
+
+        // Get the sequence number from headers or content (customize as needed)
+        public long GetChunkSequence(RelayedHttpListenerContext context)
+        {
+            // Extract and return the sequence number from headers or content
+            // Example: Get from "X-Chunk-Sequence" header
+            string sequenceHeader = context.Request.Headers.Get("X-Chunk-Sequence");
+            if (!string.IsNullOrEmpty(sequenceHeader) && long.TryParse(sequenceHeader, out long sequence))
+            {
+                return sequence;
+            }
+            return 0;
+        }
+
+        public void WriteToContextResponse(RelayedHttpListenerContext context, string message, HttpStatusCode statusCode = HttpStatusCode.OK)
+        {
+            try
+            {
+                // Set the HTTP status code
+                context.Response.StatusCode = (HttpStatusCode)(int)statusCode;
+
+                // Write the message to the response stream
+                using (var sw = new StreamWriter(context.Response.OutputStream))
+                {
+                    sw.WriteLine(message);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occurred while writing to the response.");
+                // Handle the error as needed
+            }
+        }
+
+        // Decompression method (customize as needed)
+        public byte[] Decompress(byte[] compressedData)
+        {
+            // Implement decompression logic here
+            // Example: Use a compression library like GZipStream or deflate algorithm
+
+            // Return the decompressed data
+            return compressedData; // Placeholder for decompression logic
         }
     }
+}
 
 

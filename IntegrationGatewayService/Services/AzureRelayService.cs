@@ -15,6 +15,7 @@ using Microsoft.Extensions.Configuration;
 using SampleWorkerApp.Helper;
 using System.Net;
 using Newtonsoft.Json;
+using IntegrationGatewayService.Services;
 
 namespace SampleWorkerApp.Services
 {
@@ -23,9 +24,12 @@ namespace SampleWorkerApp.Services
         {
             private readonly ILogger<AzureRelayService> _logger;
             private readonly IAzureRelayServiceHelper _helper;
+            private readonly IAzureRelayServiceHandler   _handler;
             private CancellationTokenSource _cancellationTokenSource;
             private const int MaxRetryAttempts = 3;
             private const int RetryDelayMilliseconds = 1000;
+            // Define a dictionary to store received chunks temporarily
+            private Dictionary<Guid, Dictionary<long, byte[]>> partialChunks = new Dictionary<Guid, Dictionary<long, byte[]>>();
 
         public AzureRelayService(ILogger<AzureRelayService> logger, IAzureRelayServiceHelper helper)
             {
@@ -42,7 +46,7 @@ namespace SampleWorkerApp.Services
             {
                 try
                 {
-                    ResumeAsync(cancellationToken);
+                    await ResumeAsync(cancellationToken);
 
                     _cancellationTokenSource = new CancellationTokenSource();
 
@@ -92,6 +96,13 @@ namespace SampleWorkerApp.Services
                 try
                 {
                     var listener = _helper.GetListener();
+
+                    // Subscribe to the status events.
+                    listener.Connecting += (o, e) => { Console.WriteLine("Connecting"); };
+                    listener.Offline += (o, e) => { Console.WriteLine("Offline"); };
+                    listener.Online += (o, e) => { Console.WriteLine("Online"); };
+
+                    //HTTP Request handler for handling each Message that comes through Relay 
                     listener.RequestHandler = ProcessRequest;
 
                     await listener.OpenAsync(cancellationToken);
@@ -134,198 +145,15 @@ namespace SampleWorkerApp.Services
         }
 
 
-        // Define a dictionary to store received chunks temporarily
-        public Dictionary<Guid, Dictionary<long, byte[]>> partialChunks = new Dictionary<Guid, Dictionary<long, byte[]>>();
+       
 
 
         private void ProcessRequest(RelayedHttpListenerContext context)
         {
-            try
-            {
-                _logger.LogInformation("Azure Relay listener Received a Message.");
-
-                // Extract metadata from headers or content (same as before)
-                long chunkStart = GetChunkStart(context);
-                long totalFileSize = GetTotalFileSize(context);
-                Guid fileId = GetFileId(context); // Unique identifier for the file
-                long currentChunkSequence = GetChunkSequence(context);
-                
-
-                // Define a buffer to read chunks of the file
-                byte[] buffer = new byte[8192]; // You can adjust the buffer size as needed
-
-                // Read the chunk data into a byte array
-                using (MemoryStream chunkData = new MemoryStream())
-                {
-                    int bytesRead;
-                    while ((bytesRead = context.Request.InputStream.Read(buffer, 0, buffer.Length)) > 0)
-                    {
-                        // Write the received chunk to the in-memory buffer
-                        chunkData.Write(buffer, 0, bytesRead);
-                    }
-
-                    // Check if the dictionary entry for the file exists
-                    if (!partialChunks.ContainsKey(fileId))
-                    {
-                        partialChunks[fileId] = new Dictionary<long, byte[]>();
-                    }
-
-                    // Store the chunk data using the sequence number as the key
-                    partialChunks[fileId][currentChunkSequence] = chunkData.ToArray();
-                }
-
-                // Check if all expected chunks are received to assemble the complete file
-                if (partialChunks.ContainsKey(fileId) && partialChunks[fileId].Count >= totalFileSize)
-                {
-                    // Assemble the complete file from the received chunks
-                   
-                    byte[] completeFileData = new byte[totalFileSize];
-                    foreach (var entry in partialChunks[fileId].OrderBy(kvp => kvp.Key))
-                    {
-                        // fileStream.Write(entry.Value, 0, entry.Value.Length);
-                        byte[] chunkData = entry.Value;
-                        long chunkStartSequence = entry.Key;
-                        Array.Copy(chunkData, 0, completeFileData, chunkStartSequence, chunkData.Length);
-                    }
-
-                    // Optionally, decompress the complete file data if it was compressed before sending
-                    byte[] decompressedFileData = Decompress(completeFileData);
-
-                    // Save the decompressed data to a file
-                    string filePath = "path/to/your/output/file.ext"; // Specify the file path
-                    File.WriteAllBytes(filePath, decompressedFileData);
-
-                    // Remove the assembled chunks and the expected sequence number
-                    partialChunks.Remove(fileId);
-
-                    
-
-                    // The entire file has been received and assembled
-                    _logger.LogInformation("File received completely.");
-                }
-
-                // Respond with a success message
-                string successMessage = "File chunk received successfully.";
-                WriteToContextResponse(context, successMessage, HttpStatusCode.OK);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "An error occurred while processing file chunk.");
-                // Respond with an error message
-                string errorMessage = "Error processing file chunk.";
-                WriteToContextResponse(context, errorMessage, HttpStatusCode.InternalServerError);
-            }
+           _handler.HandleRequestBasedonType(context);
         }
 
-        // Decompression method (customize as needed)
-        private byte[] Decompress(byte[] compressedData)
-        {
-            // Implement decompression logic here
-            // Example: Use a compression library like GZipStream or deflate algorithm
-
-            // Return the decompressed data
-            return compressedData; // Placeholder for decompression logic
-        }
-
-        // Get the sequence number from headers or content (customize as needed)
-        private long GetChunkSequence(RelayedHttpListenerContext context)
-        {
-            // Extract and return the sequence number from headers or content
-            // Example: Get from "X-Chunk-Sequence" header
-            string sequenceHeader = context.Request.Headers.Get("X-Chunk-Sequence");
-            if (!string.IsNullOrEmpty(sequenceHeader) && long.TryParse(sequenceHeader, out long sequence))
-            {
-                return sequence;
-            }
-            return 0;
-        }
-        private long GetChunkStart(RelayedHttpListenerContext context)
-        {
-            // Extract and return the chunk start position from headers or content
-            // Example: Get from "Content-Range" header
-            string contentRangeHeader = context.Request.Headers.Get("Content-Range");
-            if (!string.IsNullOrEmpty(contentRangeHeader))
-            {
-                // Parse the content range header to get the start position
-                // Example: "bytes 0-999/5000"
-                var parts = contentRangeHeader.Split(' ');
-                if (parts.Length > 1)
-                {
-                    var rangeParts = parts[1].Split('-');
-                    if (rangeParts.Length > 0)
-                    {
-                        if (long.TryParse(rangeParts[0], out long start))
-                        {
-                            return start;
-                        }
-                    }
-                }
-            }
-            return 0;
-        }
-
-        private long GetTotalFileSize(RelayedHttpListenerContext context)
-        {
-            // Extract and return the total file size from headers or content
-            // Example: Get from "Content-Range" header
-            string contentRangeHeader = context.Request.Headers.Get("Content-Range");
-            if (!string.IsNullOrEmpty(contentRangeHeader))
-            {
-                // Parse the content range header to get the total file size
-                // Example: "bytes 0-999/5000"
-                var parts = contentRangeHeader.Split('/');
-                if (parts.Length > 1)
-                {
-                    if (long.TryParse(parts[1], out long totalSize))
-                    {
-                        return totalSize;
-                    }
-                }
-            }
-            return 0;
-        }
-
-        // Get the fileId from headers or content (customize as needed)
-        private Guid GetFileId(RelayedHttpListenerContext context)
-        {
-            // Extract and return the fileId from headers or content
-            // Example: Get from "X-File-Id" header
-            string fileIdHeader = context.Request.Headers.Get("X-File-Id");
-            if (!string.IsNullOrEmpty(fileIdHeader) && Guid.TryParse(fileIdHeader, out Guid fileId))
-            {
-                return fileId;
-            }
-
-            // If fileId is not found in headers, you may need to extract it from content or other sources.
-            // Example: Extract from JSON content
-            // string content = ReadContextRequest(context);
-            // Implement fileId extraction logic from content.
-
-            // If fileId cannot be determined, you can return a default Guid or throw an exception.
-            // For demonstration, we return Guid.Empty as a default.
-            return Guid.Empty;
-        }
-
-
-        public void WriteToContextResponse(RelayedHttpListenerContext context, string message, HttpStatusCode statusCode = HttpStatusCode.OK)
-        {
-            try
-            {
-                // Set the HTTP status code
-                context.Response.StatusCode = (HttpStatusCode)(int)statusCode;
-
-                // Write the message to the response stream
-                using (var sw = new StreamWriter(context.Response.OutputStream))
-                {
-                    sw.WriteLine(message);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "An error occurred while writing to the response.");
-                // Handle the error as needed
-            }
-        }
+       
 
         // A method to handle the resumption logic
         //public async Task ResumeAsync(CancellationToken cancellationToken)
