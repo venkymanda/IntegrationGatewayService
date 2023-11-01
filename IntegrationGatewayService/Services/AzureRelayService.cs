@@ -25,16 +25,17 @@ namespace SampleWorkerApp.Services
             private readonly ILogger<AzureRelayService> _logger;
             private readonly IAzureRelayServiceHelper _helper;
             private readonly IAzureRelayServiceHandler   _handler;
-            private CancellationTokenSource _cancellationTokenSource;
+            private CancellationTokenSource? _cancellationTokenSource;
             private const int MaxRetryAttempts = 3;
             private const int RetryDelayMilliseconds = 1000;
             // Define a dictionary to store received chunks temporarily
             private Dictionary<Guid, Dictionary<long, byte[]>> partialChunks = new Dictionary<Guid, Dictionary<long, byte[]>>();
 
-        public AzureRelayService(ILogger<AzureRelayService> logger, IAzureRelayServiceHelper helper)
+        public AzureRelayService(ILogger<AzureRelayService> logger, IAzureRelayServiceHelper helper,IAzureRelayServiceHandler handler)
             {
                 _logger = logger;
                 _helper = helper;
+                _handler = handler;
             // Subscribe to process exit and unhandled exception events
             AppDomain.CurrentDomain.ProcessExit += StopOrShutdownService;
             AppDomain.CurrentDomain.UnhandledException += StopOrShutdownService;
@@ -42,50 +43,63 @@ namespace SampleWorkerApp.Services
 
         }
 
-            public async Task<Task> StartAsync(CancellationToken cancellationToken)
+        public async Task<Task> StartAsync(CancellationToken cancellationToken)
+        {
+            try
             {
-                try
+                ResumeAsync(cancellationToken);
+
+                _cancellationTokenSource = new CancellationTokenSource();
+
+                await Task.Run(async () =>
                 {
-                    await ResumeAsync(cancellationToken);
-
-                    _cancellationTokenSource = new CancellationTokenSource();
-
-                    await Task.Run(async () =>
-                    {
-                        await BackgroundWorkAsync(_cancellationTokenSource.Token);
-                    });
-
-                    return Task.CompletedTask;
-                }
-                catch (Exception ex)
-                {
-                    throw new InvalidOperationException(ex.Message);
-                    //return Task.FromException(ex);
-                }
-            }
-
-            public Task StopAsync(CancellationToken cancellationToken)
-            {
-                _cancellationTokenSource.Cancel();
-
-                // Add any cleanup logic here
+                    await BackgroundWorkAsync(_cancellationTokenSource.Token);
+                });
 
                 return Task.CompletedTask;
             }
-        private void StopOrShutdownService(object sender, EventArgs e)
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(ex.Message);
+                //return Task.FromException(ex);
+            }
+        }
+
+        public Task StopAsync(CancellationToken cancellationToken)
+        {
+
+            if (_cancellationTokenSource is not null)
+            {
+                _cancellationTokenSource.Cancel();
+            }
+
+            // Add any cleanup logic here
+
+            return Task.CompletedTask;
+        }
+        private void StopOrShutdownService(object? sender, EventArgs? e)
         {
             // Handle abrupt process exit here
             // Perform cleanup and logging as needed
             try
             {
-                // Save partialChunks data to a file
-                SavePartialChunksToFile();
+                if (_cancellationTokenSource is not null)
+                {
+                    _cancellationTokenSource.Cancel();
+
+                    // Save partialChunks data to a file
+                    if (partialChunks is not null)
+                    {
+                        SavePartialChunksToFile();
+                    }
+                }
             }
             catch (Exception ex)
             {
                 // Handle exceptions and log appropriately
             }
         }
+
 
         private async Task BackgroundWorkAsync(CancellationToken cancellationToken)
         {
@@ -194,7 +208,7 @@ namespace SampleWorkerApp.Services
         }
 
         // Implement the ResumeAsync method to handle resumption logic
-        public async Task ResumeAsync(CancellationToken cancellationToken)
+        public  void ResumeAsync(CancellationToken cancellationToken)
         {
             try
             {

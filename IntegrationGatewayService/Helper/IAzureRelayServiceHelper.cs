@@ -7,6 +7,7 @@ using Microsoft.Azure.Relay;
 using System;
 using System.IO;
 using System.Net;
+using IntegrationGatewayService.Models;
 
 namespace SampleWorkerApp.Helper
 {
@@ -38,6 +39,8 @@ namespace SampleWorkerApp.Helper
 
 
         public byte[] Decompress(byte[] compressedData);
+
+        (IRequestHeaders, IInputRequest) ExtractRequestFromContext(RelayedHttpListenerContext relayedHttpListenerContext);
     }
 }
 
