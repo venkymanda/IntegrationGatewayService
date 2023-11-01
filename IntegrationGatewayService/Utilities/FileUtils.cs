@@ -1,4 +1,5 @@
-﻿using Microsoft.Azure.Relay;
+﻿using IntegrationGatewayService.Models;
+using Microsoft.Azure.Relay;
 using SampleWorkerApp.Helper;
 using SampleWorkerApp.Services;
 using System;
@@ -25,7 +26,7 @@ namespace IntegrationGatewayService.Utilities
         }
 
 
-        public void ManipulateFile(RelayedHttpListenerContext context)
+        public  void ManipulateFile<FileUploadRequestDTO>(RelayedHttpListenerContext context,FileUploadRequestDTO fileUploadRequest)
         {
             Console.WriteLine("FileUtils is manipulating the file.");
             try

@@ -1,4 +1,5 @@
-﻿using Microsoft.Azure.Relay;
+﻿using IntegrationGatewayService.Models;
+using Microsoft.Azure.Relay;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,7 +10,7 @@ namespace IntegrationGatewayService.Utilities
 {
     public interface IFileManipulator
     {
-        void ManipulateFile(RelayedHttpListenerContext context);
+        void ManipulateFile<T>(RelayedHttpListenerContext context,T inputRequest);
         // Add other methods as needed
     }
 }

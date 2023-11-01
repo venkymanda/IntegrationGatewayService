@@ -8,6 +8,10 @@ using System;
 using System.IO;
 using System.Net;
 using SampleWorkerApp.Services;
+using IntegrationGatewayService.Models;
+using Azure.Core;
+using Newtonsoft.Json;
+using System.Transactions;
 
 namespace SampleWorkerApp.Helper
 {
@@ -197,6 +201,58 @@ namespace SampleWorkerApp.Helper
             // Return the decompressed data
             return compressedData; // Placeholder for decompression logic
         }
+
+        public (IRequestHeaders, IInputRequest) ExtractRequestFromContext(RelayedHttpListenerContext context)
+        {
+            string requestTypeHeader = context.Request.Headers["X-RequestType"] ?? string.Empty;
+
+            if (!string.IsNullOrEmpty(requestTypeHeader))
+            {
+                var inputRequestJson = context.Request.Headers["X-InputRequest"];
+                if (!string.IsNullOrEmpty(inputRequestJson))
+                {
+                    switch (requestTypeHeader)
+                    {
+                        case "UploadFile":
+                            var uploadRequest = JsonConvert.DeserializeObject<FileUploadRequestDTO>(inputRequestJson);
+                            var headersDTO = new FileUploadRequestHeadersDTO()
+                            {
+                                BlobName = context.Request.Headers["X-Filename"] ?? string.Empty,
+                                ChunkSequence = int.TryParse(context.Request.Headers["X-ChunkSequence"], out int chunkSeq) ? chunkSeq : 0,
+                                TotalChunks = int.TryParse(context.Request.Headers["X-TotalChunks"], out int totalChunks) ? totalChunks : 0,
+                                TotalSize = long.TryParse(context.Request.Headers["X-TotalSize"], out long totalSize) ? totalSize : 0,
+                                TransactionId = context.Request.Headers["X-TransactionID"] ?? string.Empty,
+                                ChunkSize = int.TryParse(context.Request.Headers["X-ChunkSize"], out int chunkSize) ? chunkSize : 8192, // Default Value
+                                RequestType=requestTypeHeader
+
+                            };
+
+                            return (headersDTO, uploadRequest);
+                        // Handle other request types as needed
+                        default:
+                            // Handle unsupported request types
+                            // You might consider logging or raising an exception here for unhandled types
+                            break;
+                    }
+                }
+                else
+                {
+                    // Handle the case where "X-InputRequest" is missing or invalid
+                    // You might consider logging or raising an exception here
+                }
+            }
+            else
+            {
+                // Handle the case where "X-RequestType" is missing or empty
+                // You might consider logging or raising an exception here
+            }
+
+            // Handle invalid or missing data by returning default values
+            return (null, null);
+        }
+
+
+
     }
 }
 
