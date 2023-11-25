@@ -172,7 +172,7 @@ namespace SampleWorkerApp.Helper
             return 0;
         }
 
-        public void WriteToContextResponse(RelayedHttpListenerContext context, string message, HttpStatusCode statusCode = HttpStatusCode.OK)
+        public async Task WriteToContextResponse(RelayedHttpListenerContext context, string message, HttpStatusCode statusCode = HttpStatusCode.OK)
         {
             try
             {
@@ -184,6 +184,7 @@ namespace SampleWorkerApp.Helper
                 {
                     sw.WriteLine(message);
                 }
+                await context.Response.CloseAsync().ConfigureAwait(false); // Item 1, Item 5
             }
             catch (Exception ex)
             {

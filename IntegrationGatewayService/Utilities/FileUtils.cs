@@ -26,7 +26,7 @@ namespace IntegrationGatewayService.Utilities
         }
 
 
-        public  void ManipulateFile<FileUploadRequestDTO>(RelayedHttpListenerContext context,FileUploadRequestDTO fileUploadRequest)
+        public async Task ManipulateFileAsync<FileUploadRequestDTO>(RelayedHttpListenerContext context,FileUploadRequestDTO fileUploadRequest)
         {
             Console.WriteLine("FileUtils is manipulating the file.");
             try
@@ -72,14 +72,14 @@ namespace IntegrationGatewayService.Utilities
 
                     // Respond with a success message
                     string successMessage = "File received and assembled successfully.";
-                    _helper.WriteToContextResponse(context, successMessage, HttpStatusCode.OK);
+                    await _helper.WriteToContextResponse(context, successMessage, HttpStatusCode.OK);
 
                     // All chunks received and processed successfully
                 }
 
                 // Respond with a success message for the received chunk
                 string successChunkMessage = "File chunk received successfully.";
-                _helper.WriteToContextResponse(context, successChunkMessage, HttpStatusCode.OK);
+                await _helper.WriteToContextResponse(context, successChunkMessage, HttpStatusCode.OK);
                 // Not all chunks received yet
             }
             catch (Exception ex)
@@ -87,7 +87,7 @@ namespace IntegrationGatewayService.Utilities
                 _logger.LogError(ex, "An error occurred while processing file chunk.");
                 // Respond with an error message
                 string errorMessage = "Error processing file chunk.";
-                _helper.WriteToContextResponse(context, errorMessage, HttpStatusCode.InternalServerError);
+                await _helper.WriteToContextResponse(context, errorMessage, HttpStatusCode.InternalServerError);
             }
         }
 

@@ -28,7 +28,7 @@ namespace IntegrationGatewayService.Services
 
         }
 
-        public void HandleRequestBasedonType(RelayedHttpListenerContext context)
+        public async Task HandleRequestBasedonTypeAsync(RelayedHttpListenerContext context)
         {
             try
             {
@@ -45,7 +45,7 @@ namespace IntegrationGatewayService.Services
                     {
                         case "UploadFile":
                             var fileManipulator = _manager.GetFileManipulator(FileManipulatorTypeManager.FileManipulatorType.FileUtils);
-                            fileManipulator.ManipulateFile(context, (FileUploadRequestDTO)request);
+                            await fileManipulator.ManipulateFileAsync(context, (FileUploadRequestDTO)request);
                             break;
                         case "DownloadFile":
                             // Use a different file manipulator for downloads if needed
