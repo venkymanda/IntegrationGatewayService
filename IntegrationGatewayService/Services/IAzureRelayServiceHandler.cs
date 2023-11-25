@@ -10,6 +10,6 @@ namespace IntegrationGatewayService.Services
 {
     public interface IAzureRelayServiceHandler
     {
-        public void HandleRequestBasedonType(RelayedHttpListenerContext context);
+        public Task HandleRequestBasedonTypeAsync(RelayedHttpListenerContext context);
     }
 }

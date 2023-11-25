@@ -35,7 +35,7 @@ namespace SampleWorkerApp.Helper
 
         public long GetChunkSequence(RelayedHttpListenerContext context);
 
-        public void WriteToContextResponse(RelayedHttpListenerContext context, string message, HttpStatusCode statusCode = HttpStatusCode.OK);
+        public Task WriteToContextResponse(RelayedHttpListenerContext context, string message, HttpStatusCode statusCode = HttpStatusCode.OK);
 
 
         public byte[] Decompress(byte[] compressedData);

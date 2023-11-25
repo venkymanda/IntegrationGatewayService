@@ -28,9 +28,7 @@ namespace SampleWorkerApp.Services
             private CancellationTokenSource? _cancellationTokenSource;
             private const int MaxRetryAttempts = 3;
             private const int RetryDelayMilliseconds = 1000;
-            // Define a dictionary to store received chunks temporarily
-            private Dictionary<Guid, Dictionary<long, byte[]>> partialChunks = new Dictionary<Guid, Dictionary<long, byte[]>>();
-
+           
         public AzureRelayService(ILogger<AzureRelayService> logger, IAzureRelayServiceHelper helper,IAzureRelayServiceHandler handler)
             {
                 _logger = logger;
@@ -47,7 +45,7 @@ namespace SampleWorkerApp.Services
         {
             try
             {
-                ResumeAsync(cancellationToken);
+                //ResumeAsync(cancellationToken);
 
                 _cancellationTokenSource = new CancellationTokenSource();
 
@@ -87,16 +85,16 @@ namespace SampleWorkerApp.Services
                 {
                     _cancellationTokenSource.Cancel();
 
-                    // Save partialChunks data to a file
-                    if (partialChunks is not null)
-                    {
-                        SavePartialChunksToFile();
-                    }
+                   
                 }
+                // Call StopAsync to perform cleanup and additional stop logic
+                StopAsync(CancellationToken.None).Wait(); // Consider async if StopAsync is async
             }
             catch (Exception ex)
             {
                 // Handle exceptions and log appropriately
+               
+                _logger.LogError(ex, "An error occurred during service stop.");
             }
         }
 
@@ -104,8 +102,12 @@ namespace SampleWorkerApp.Services
         private async Task BackgroundWorkAsync(CancellationToken cancellationToken)
         {
             int retryCount = 0;
+            // Use a semaphore to control concurrency
+            int maxConcurrentRequests = 100; // Adjust as needed
+            SemaphoreSlim semaphore = new SemaphoreSlim(maxConcurrentRequests);
 
-            while (retryCount < MaxRetryAttempts)
+            _cancellationTokenSource = new CancellationTokenSource();
+            while (!cancellationToken.IsCancellationRequested && retryCount < MaxRetryAttempts && !_cancellationTokenSource.IsCancellationRequested)
             {
                 try
                 {
@@ -116,19 +118,33 @@ namespace SampleWorkerApp.Services
                     listener.Offline += (o, e) => { Console.WriteLine("Offline"); };
                     listener.Online += (o, e) => { Console.WriteLine("Online"); };
 
+                    // Set up cancellation token for ProcessRequestAsync
+                    var cancellationTokenForProcessRequest = _cancellationTokenSource.Token;
                     //HTTP Request handler for handling each Message that comes through Relay 
-                    listener.RequestHandler = ProcessRequest;
+                    listener.RequestHandler = async (context) =>
+                    {
+                        // Process each request concurrently using async/await and a semaphore
+                        await semaphore.WaitAsync();
+
+                        try
+                        {
+                            await ProcessRequestAsync(context, cancellationTokenForProcessRequest);
+                        }
+                        finally
+                        {
+                            semaphore.Release();
+                        }
+
+                    };
+                    ;
 
                     await listener.OpenAsync(cancellationToken);
 
                     _logger.LogInformation("Azure Relay listener started.");
 
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        // Perform background processing here
+                   
 
-                        await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
-                    }
+                   
 
                     await listener.CloseAsync(cancellationToken);
 
@@ -144,9 +160,11 @@ namespace SampleWorkerApp.Services
                 {
                     _logger.LogError(ex, "An error occurred while processing requests.");
 
-                    // Increment retry count and wait before retrying
+                    // Increment retry count and wait with exponential backoff before retrying
                     retryCount++;
-                    await Task.Delay(RetryDelayMilliseconds);
+                    int delayMilliseconds = (int)Math.Pow(2, retryCount) * RetryDelayMilliseconds;
+                    await Task.Delay(delayMilliseconds, cancellationToken);
+
                     if (retryCount >= MaxRetryAttempts)
                     {
                         throw new InvalidOperationException("Failed to perform background work after multiple retries.");
@@ -162,71 +180,26 @@ namespace SampleWorkerApp.Services
        
 
 
-        private void ProcessRequest(RelayedHttpListenerContext context)
-        {
-           _handler.HandleRequestBasedonType(context);
-        }
-
-       
-
-        // A method to handle the resumption logic
-        //public async Task ResumeAsync(CancellationToken cancellationToken)
-        //{
-        //    try
-        //    {
-        //        // Read logs or database records to determine the last successfully received chunk for each file
-
-        //        //foreach (var fileIdentifier in filesToResume)
-        //        //{
-        //        //    long lastReceivedChunkSequence = GetLastReceivedChunkSequence(fileIdentifier);
-        //        //    long expectedSequence = lastReceivedChunkSequence + 1;
-
-        //        //    // Request missing chunks from the sender starting from expectedSequence
-        //        //    await RequestMissingChunksAsync(fileIdentifier, expectedSequence, cancellationToken);
-        //        //}
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        // Handle exceptions and log appropriately
-        //    }
-        //}
-
-        // A method to save the partialChunks data to a file
-        private void SavePartialChunksToFile()
+        private async Task ProcessRequestAsync(RelayedHttpListenerContext context,CancellationToken cancellationToken)
         {
             try
             {
-                // Serialize the partialChunks dictionary to a file (e.g., using JSON serialization)
-                string filePath = "path/to/partialChunks.json"; // Specify the file path
-                string jsonData = JsonConvert.SerializeObject(partialChunks);
-                File.WriteAllText(filePath, jsonData);
+                await _handler.HandleRequestBasedonTypeAsync(context);
+
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancellation requested, gracefully exit
             }
             catch (Exception ex)
             {
-                // Handle exceptions and log appropriately
+                _logger.LogError(ex.Message, ex);
             }
         }
 
         // Implement the ResumeAsync method to handle resumption logic
-        public  void ResumeAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                // Read the saved partialChunks data from the file (if it exists)
-                string filePath = "path/to/partialChunks.json"; // Specify the file path
-                if (File.Exists(filePath))
-                {
-                    string jsonData = File.ReadAllText(filePath);
-                    partialChunks = JsonConvert.DeserializeObject<Dictionary<Guid, Dictionary<long, byte[]>>>(jsonData);
-                }
-
-                // Continue with resumption logic as before
-            }
-            catch (Exception ex)
-            {
-                // Handle exceptions and log appropriately
-            }
-        }
+        // public  void ResumeAsync(CancellationToken cancellationToken){}
 
         // Implement the RequestMissingChunksAsync method to request missing chunks from the sender
 
