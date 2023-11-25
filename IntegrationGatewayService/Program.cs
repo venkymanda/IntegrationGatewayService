@@ -84,11 +84,11 @@ class Program
         });
 
         services.AddFileManipulators();
-        services.AddTransient<FileManipulatorTypeManager>();
+        
         // Add services
-        services.AddSingleton<IAzureRelayService, AzureRelayService>();
-        services.AddScoped<IAzureRelayServiceHelper, AzureRelayServiceHelper>();
-        services.AddScoped<IAzureRelayServiceHandler, AzureRelayServiceHandler>();
+        services.AddScoped<IAzureRelayService, AzureRelayService>();
+        services.AddSingleton<IAzureRelayServiceHelper, AzureRelayServiceHelper>();
+        services.AddTransient<IAzureRelayServiceHandler, AzureRelayServiceHandler>();
     }
 
 }

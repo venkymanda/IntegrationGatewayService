@@ -9,7 +9,7 @@ namespace SampleWorkerApp.Services
     public interface IAzureRelayService
     {
         Task<Task> StartAsync(CancellationToken cancellationToken);
-        Task StopAsync(CancellationToken cancellationToken);
+        Task<Task> StopAsync(CancellationToken cancellationToken);
     }
 
 }
