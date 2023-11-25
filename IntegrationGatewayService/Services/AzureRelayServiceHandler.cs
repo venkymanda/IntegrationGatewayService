@@ -10,6 +10,7 @@ using System.Reflection.Metadata;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Serialization;
+using static IntegrationGatewayService.Utilities.FileManipulatorTypeManager;
 
 namespace IntegrationGatewayService.Services
 {
@@ -17,14 +18,13 @@ namespace IntegrationGatewayService.Services
     {
         private readonly ILogger<AzureRelayServiceHandler> _logger;
         private readonly IAzureRelayServiceHelper _helper;
-        private readonly IFileManipulatorTypeManager _manager;
+        
+        private readonly IServiceProvider _serviceProvider;
 
-        public AzureRelayServiceHandler(ILogger<AzureRelayServiceHandler> logger, IAzureRelayServiceHelper helper, IFileManipulatorTypeManager manager)
+        public AzureRelayServiceHandler(ILogger<AzureRelayServiceHandler> logger, IAzureRelayServiceHelper helper)//, IFileManipulatorTypeManager manager)
         {
             _logger = logger;
             _helper = helper;
-            _manager = manager;
-           
 
         }
 
@@ -44,7 +44,8 @@ namespace IntegrationGatewayService.Services
                     switch (headers.RequestType)
                     {
                         case "UploadFile":
-                            var fileManipulator = _manager.GetFileManipulator(FileManipulatorTypeManager.FileManipulatorType.FileUtils);
+                           
+                            var fileManipulator = _serviceProvider.GetRequiredService<FileUtils>();
                             await fileManipulator.ManipulateFileAsync(context, (FileUploadRequestDTO)request);
                             break;
                         case "DownloadFile":

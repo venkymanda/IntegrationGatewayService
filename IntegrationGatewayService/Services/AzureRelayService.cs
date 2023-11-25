@@ -26,9 +26,11 @@ namespace SampleWorkerApp.Services
             private readonly IAzureRelayServiceHelper _helper;
             private readonly IAzureRelayServiceHandler   _handler;
             private CancellationTokenSource? _cancellationTokenSource;
+            private CancellationToken combinedtoken;
             private const int MaxRetryAttempts = 3;
             private const int RetryDelayMilliseconds = 1000;
-           
+            private HybridConnectionListener listener;  // Declare the listener as a class-level variable
+
         public AzureRelayService(ILogger<AzureRelayService> logger, IAzureRelayServiceHelper helper,IAzureRelayServiceHandler handler)
             {
                 _logger = logger;
@@ -48,10 +50,11 @@ namespace SampleWorkerApp.Services
                 //ResumeAsync(cancellationToken);
 
                 _cancellationTokenSource = new CancellationTokenSource();
-
+                combinedtoken = CancellationTokenSource.CreateLinkedTokenSource(
+                                       _cancellationTokenSource.Token, cancellationToken).Token;
                 await Task.Run(async () =>
                 {
-                    await BackgroundWorkAsync(_cancellationTokenSource.Token);
+                    await BackgroundWorkAsync(combinedtoken);
                 });
 
                 return Task.CompletedTask;
@@ -63,7 +66,7 @@ namespace SampleWorkerApp.Services
             }
         }
 
-        public Task StopAsync(CancellationToken cancellationToken)
+        public async Task<Task> StopAsync(CancellationToken cancellationToken)
         {
 
             if (_cancellationTokenSource is not null)
@@ -71,6 +74,10 @@ namespace SampleWorkerApp.Services
                 _cancellationTokenSource.Cancel();
             }
 
+            // Add any cleanup logic here
+            // Close the Azure Relay listener
+            await listener.CloseAsync(combinedtoken);
+            _logger.LogInformation("Azure Relay is Stopped.");
             // Add any cleanup logic here
 
             return Task.CompletedTask;
@@ -88,7 +95,7 @@ namespace SampleWorkerApp.Services
                    
                 }
                 // Call StopAsync to perform cleanup and additional stop logic
-                StopAsync(CancellationToken.None).Wait(); // Consider async if StopAsync is async
+                //StopAsync(CancellationToken.None).Wait(); // Consider async if StopAsync is async
             }
             catch (Exception ex)
             {
@@ -106,12 +113,12 @@ namespace SampleWorkerApp.Services
             int maxConcurrentRequests = 100; // Adjust as needed
             SemaphoreSlim semaphore = new SemaphoreSlim(maxConcurrentRequests);
 
-            _cancellationTokenSource = new CancellationTokenSource();
+
             while (!cancellationToken.IsCancellationRequested && retryCount < MaxRetryAttempts && !_cancellationTokenSource.IsCancellationRequested)
             {
                 try
                 {
-                    var listener = _helper.GetListener();
+                    listener = _helper.GetListener();
 
                     // Subscribe to the status events.
                     listener.Connecting += (o, e) => { Console.WriteLine("Connecting"); };
@@ -119,7 +126,7 @@ namespace SampleWorkerApp.Services
                     listener.Online += (o, e) => { Console.WriteLine("Online"); };
 
                     // Set up cancellation token for ProcessRequestAsync
-                    var cancellationTokenForProcessRequest = _cancellationTokenSource.Token;
+
                     //HTTP Request handler for handling each Message that comes through Relay 
                     listener.RequestHandler = async (context) =>
                     {
@@ -128,7 +135,7 @@ namespace SampleWorkerApp.Services
 
                         try
                         {
-                            await ProcessRequestAsync(context, cancellationTokenForProcessRequest);
+                            await ProcessRequestAsync(context, combinedtoken);
                         }
                         finally
                         {
@@ -138,15 +145,17 @@ namespace SampleWorkerApp.Services
                     };
                     ;
 
-                    await listener.OpenAsync(cancellationToken);
+                    await listener.OpenAsync(combinedtoken);
 
                     _logger.LogInformation("Azure Relay listener started.");
 
-                   
 
-                   
 
-                    await listener.CloseAsync(cancellationToken);
+                    // Wait for cancellation
+                    // Wait for cancellation of both tokens so that both Internal and External Tokens can trigger it
+                    await Task.Delay(-1, combinedtoken);
+
+                    await listener.CloseAsync(combinedtoken);
 
                     // If everything succeeded, break out of the loop
                     break;
@@ -170,10 +179,17 @@ namespace SampleWorkerApp.Services
                         throw new InvalidOperationException("Failed to perform background work after multiple retries.");
                     }
                 }
+
+
+                // If all retry attempts fail, throw the last exception
+                finally
+                {
+                    // Ensure proper disposal of the listener
+                    await listener.CloseAsync(combinedtoken);
+                    _logger.LogInformation("Azure Relay is Stopped 2.");
+                }
             }
 
-            // If all retry attempts fail, throw the last exception
-           
         }
 
 
