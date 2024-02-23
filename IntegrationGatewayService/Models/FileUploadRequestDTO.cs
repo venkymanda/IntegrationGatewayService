@@ -15,6 +15,7 @@ namespace IntegrationGatewayService.Models
         public RequestType? RequestType { get; set; }
         public string? Source { get; set; }
         public string? Destination { get; set; }
+        public string? DestinationPath { get; set; }
         public string? Direction { get; set; }
         public string? FlowName { get; set; }
         public string? Data { get; set; }
@@ -24,5 +25,6 @@ namespace IntegrationGatewayService.Models
 
 
     }
+
     
 }

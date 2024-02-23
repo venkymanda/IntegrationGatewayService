@@ -46,7 +46,7 @@ namespace IntegrationGatewayService.Services
                         case "UploadFile":
                            
                             var fileManipulator = _serviceProvider.GetRequiredService<FileUtils>();
-                            await fileManipulator.ManipulateFileAsync(context, (FileUploadRequestDTO)request);
+                            await fileManipulator.ManipulateFileAsync(context, (FileUploadRequestDTO)request,(FileUploadRequestHeadersDTO)headers);
                             break;
                         case "DownloadFile":
                             // Use a different file manipulator for downloads if needed
