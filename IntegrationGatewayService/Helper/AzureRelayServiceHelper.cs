@@ -12,6 +12,7 @@ using IntegrationGatewayService.Models;
 using Azure.Core;
 using Newtonsoft.Json;
 using System.Transactions;
+using System.IO.Compression;
 
 namespace SampleWorkerApp.Helper
 {
@@ -90,88 +91,7 @@ namespace SampleWorkerApp.Helper
                 }
             }
 
-            public long GetChunkStart(RelayedHttpListenerContext context)
-            {
-                // Extract and return the chunk start position from headers or content
-                // Example: Get from "Content-Range" header
-                string contentRangeHeader = context.Request.Headers.Get("Content-Range");
-                if (!string.IsNullOrEmpty(contentRangeHeader))
-                {
-                    // Parse the content range header to get the start position
-                    // Example: "bytes 0-999/5000"
-                    var parts = contentRangeHeader.Split(' ');
-                    if (parts.Length > 1)
-                    {
-                        var rangeParts = parts[1].Split('-');
-                        if (rangeParts.Length > 0)
-                        {
-                            if (long.TryParse(rangeParts[0], out long start))
-                            {
-                                return start;
-                            }
-                        }
-                    }
-                }
-                return 0;
-            }
-
-        public long GetTotalFileSize(RelayedHttpListenerContext context)
-        {
-            // Extract and return the total file size from headers or content
-            // Example: Get from "Content-Range" header
-            string contentRangeHeader = context.Request.Headers.Get("Content-Range");
-            if (!string.IsNullOrEmpty(contentRangeHeader))
-            {
-                // Parse the content range header to get the total file size
-                // Example: "bytes 0-999/5000"
-                var parts = contentRangeHeader.Split('/');
-                if (parts.Length > 1)
-                {
-                    if (long.TryParse(parts[1], out long totalSize))
-                    {
-                        return totalSize;
-                    }
-                }
-            }
-            return 0;
-        }
-
-
-        // Get the fileId from headers or content (customize as needed)
-        public Guid GetFileId(RelayedHttpListenerContext context)
-        {
-            // Extract and return the fileId from headers or content
-            // Example: Get from "X-File-Id" header
-            string fileIdHeader = context.Request.Headers.Get("X-File-Id");
-            if (!string.IsNullOrEmpty(fileIdHeader) && Guid.TryParse(fileIdHeader, out Guid fileId))
-            {
-                return fileId;
-            }
-
-            // If fileId is not found in headers, you may need to extract it from content or other sources.
-            // Example: Extract from JSON content
-            // string content = ReadContextRequest(context);
-            // Implement fileId extraction logic from content.
-
-            // If fileId cannot be determined, you can return a default Guid or throw an exception.
-            // For demonstration, we return Guid.Empty as a default.
-            return Guid.Empty;
-        }
-
-
-        // Get the sequence number from headers or content (customize as needed)
-        public long GetChunkSequence(RelayedHttpListenerContext context)
-        {
-            // Extract and return the sequence number from headers or content
-            // Example: Get from "X-Chunk-Sequence" header
-            string sequenceHeader = context.Request.Headers.Get("X-Chunk-Sequence");
-            if (!string.IsNullOrEmpty(sequenceHeader) && long.TryParse(sequenceHeader, out long sequence))
-            {
-                return sequence;
-            }
-            return 0;
-        }
-
+        
         public async Task WriteToContextResponse(RelayedHttpListenerContext context, string message, HttpStatusCode statusCode = HttpStatusCode.OK)
         {
             try
@@ -194,13 +114,25 @@ namespace SampleWorkerApp.Helper
         }
 
         // Decompression method (customize as needed)
-        public byte[] Decompress(byte[] compressedData)
+        public Stream Decompress(Stream compressedData)
         {
-            // Implement decompression logic here
-            // Example: Use a compression library like GZipStream or deflate algorithm
+            GZipStream decompressionStream;
+            // Example using GZipStream for GZip compression
+            using (Stream compressedStream = compressedData)
+            {
+                using (MemoryStream decompressedStream = new MemoryStream())
+                {
+                    using (decompressionStream = new GZipStream(compressedStream, CompressionMode.Decompress))
+                    {
+                        decompressionStream.CopyTo(decompressedStream);
+                    }
 
-            // Return the decompressed data
-            return compressedData; // Placeholder for decompression logic
+                    // Reset the position of the decompressed stream to the beginning
+                    decompressedStream.Position = 0;
+                   
+                }
+            }
+            return decompressionStream; // Placeholder for decompression logic
         }
 
         public (IRequestHeaders, IInputRequest) ExtractRequestFromContext(RelayedHttpListenerContext context)
@@ -215,6 +147,7 @@ namespace SampleWorkerApp.Helper
                     switch (requestTypeHeader)
                     {
                         case "UploadFile":
+
                             var uploadRequest = JsonConvert.DeserializeObject<FileUploadRequestDTO>(inputRequestJson);
                             var headersDTO = new FileUploadRequestHeadersDTO()
                             {
@@ -227,8 +160,11 @@ namespace SampleWorkerApp.Helper
                                 RequestType=requestTypeHeader
 
                             };
-
-                            return (headersDTO, uploadRequest);
+                            if (uploadRequest != null)
+                            {
+                                return (headersDTO, uploadRequest);
+                            }
+                            else { return (headersDTO, new FileUploadRequestDTO()); }
                         // Handle other request types as needed
                         default:
                             // Handle unsupported request types

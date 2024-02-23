@@ -27,18 +27,12 @@ namespace SampleWorkerApp.Helper
 
         public string ReadContextRequest(RelayedHttpListenerContext context);
 
-        public long GetChunkStart(RelayedHttpListenerContext context);
-
-        public long GetTotalFileSize(RelayedHttpListenerContext context);
-
-        public Guid GetFileId(RelayedHttpListenerContext context);
-
-        public long GetChunkSequence(RelayedHttpListenerContext context);
+       
 
         public Task WriteToContextResponse(RelayedHttpListenerContext context, string message, HttpStatusCode statusCode = HttpStatusCode.OK);
 
 
-        public byte[] Decompress(byte[] compressedData);
+        public Stream Decompress(Stream compressedData);
 
         (IRequestHeaders, IInputRequest) ExtractRequestFromContext(RelayedHttpListenerContext relayedHttpListenerContext);
     }

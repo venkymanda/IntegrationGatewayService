@@ -26,7 +26,7 @@ namespace IntegrationGatewayService.Utilities
         }
 
 
-        public async Task ManipulateFileAsync<FileUploadRequestDTO>(RelayedHttpListenerContext context,FileUploadRequestDTO fileUploadRequest)
+        public async Task ManipulateFileAsync(RelayedHttpListenerContext context,FileUploadRequestDTO fileUploadRequest, FileUploadRequestHeadersDTO requestHeaders)
         {
             Console.WriteLine("FileUtils is manipulating the file.");
             try
@@ -34,13 +34,13 @@ namespace IntegrationGatewayService.Utilities
                 _logger.LogInformation("Azure Relay listener Received a Message.");
 
                 // Extract metadata from headers or content (same as before)
-                long chunkStart = _helper.GetChunkStart(context);
-                long totalFileSize = _helper.GetTotalFileSize(context);
-                Guid fileId = _helper.GetFileId(context); // Unique identifier for the file
-                long currentChunkSequence = _helper.GetChunkSequence(context);
-                long chunksize = 8192;
 
-                string tempDirectory = Path.GetTempPath();
+                long totalFileSize          = requestHeaders.TotalSize;
+                string fileId               = requestHeaders.TransactionId; // Unique identifier for the file
+                long currentChunkSequence   = requestHeaders.ChunkSequence;
+                long chunksize              = requestHeaders.ChunkSize;
+                
+                string tempDirectory = Path.Combine(Path.GetTempPath(),"ChunkFiles",fileId);
 
                 // Define a unique filename for the chunk based on the fileId and sequence
                 string chunkFileName = Path.Combine(tempDirectory, $"{fileId}_{currentChunkSequence}.chunk");
@@ -48,9 +48,9 @@ namespace IntegrationGatewayService.Utilities
                 // Save the received chunk data to the temporary file
                 using (FileStream chunkFileStream = File.Create(chunkFileName))
                 {
-                    byte[] buffer = new byte[8192]; // Adjust the buffer size as needed
+                    byte[] buffer = new byte[chunksize]; // Adjust the buffer size as needed
                     int bytesRead;
-                    while ((bytesRead = context.Request.InputStream.Read(buffer, 0, buffer.Length)) > 0)
+                    while ((bytesRead = _helper.Decompress(context.Request.InputStream).Read(buffer, 0, buffer.Length)) > 0)
                     {
                         // Write the received chunk to the temporary file
                         chunkFileStream.Write(buffer, 0, bytesRead);
@@ -58,10 +58,10 @@ namespace IntegrationGatewayService.Utilities
                 }
 
                 // Check if all expected chunks are received to assemble the complete file
-                if (CheckIfAllChunksReceived(fileId, totalFileSize,chunksize))
+                if (CheckIfAllChunksReceived(fileId, totalFileSize,chunksize, tempDirectory))
                 {
 
-                    string filePath = "path/to/your/output/file.ext"; // Specify the file path
+                    string filePath = fileUploadRequest.DestinationPath; // Specify the file path
 
                     AssembleCompleteFile(fileId, totalFileSize, tempDirectory, chunksize,filePath);
 
@@ -92,7 +92,7 @@ namespace IntegrationGatewayService.Utilities
         }
 
 
-        public void AssembleCompleteFile(Guid fileId, long totalFileSize,string tempDirectory,long ChunkSize,string outputPath)
+        public void AssembleCompleteFile(string fileId, long totalFileSize,string tempDirectory,long ChunkSize,string outputPath)
         {
             // Create a FileStream to write the output file
             using (FileStream completeFileStream = File.Create(outputPath))
@@ -142,31 +142,23 @@ namespace IntegrationGatewayService.Utilities
         }
 
 
-        public bool CheckIfAllChunksReceived(Guid fileId, long totalFileSize,long ChunkSize)
+        public bool CheckIfAllChunksReceived(string fileId, long totalFileSize, long ChunkSize,string tempDirectory)
         {
             // Calculate the total number of expected chunks based on the total file size
             long totalChunks = (totalFileSize + ChunkSize - 1) / ChunkSize;
 
-            // Get the list of received chunk sequence numbers for the specified fileId
-            var receivedChunkSequences = partialChunks.ContainsKey(fileId)
-                ? partialChunks[fileId].Keys.ToList()
-                : new List<long>();
+            // Path to the directory where chunk files are stored
+            string directoryPath = tempDirectory;
 
-            // Check if all expected chunks have been received
-            for (long expectedSequence = 0; expectedSequence < totalChunks; expectedSequence++)
-            {
-                if (!receivedChunkSequences.Contains(expectedSequence))
-                {
-                    return false; // Not all chunks have been received
-                }
-            }
+            // Count the number of chunk files in the directory
+            int receivedChunksCount = Directory.GetFiles(directoryPath, $"{fileId}_*.chunk").Length;
 
-            return true; // All expected chunks have been received
+            // Check if the count of received chunks matches the total number of expected chunks
+            return receivedChunksCount == totalChunks;
         }
 
-
         // Clean up chunks that are no longer needed
-        public void CleanUpChunks(Guid fileId,string tempDirectory)
+        public void CleanUpChunks(string fileId,string tempDirectory)
         {
             foreach (var filePath in Directory.GetFiles(tempDirectory, $"{fileId}_*.chunk"))
             {

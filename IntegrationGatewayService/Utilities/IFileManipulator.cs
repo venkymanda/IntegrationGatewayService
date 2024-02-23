@@ -10,7 +10,7 @@ namespace IntegrationGatewayService.Utilities
 {
     public interface IFileManipulator
     {
-        Task ManipulateFileAsync<T>(RelayedHttpListenerContext context,T inputRequest);
+        Task ManipulateFileAsync(RelayedHttpListenerContext context,FileUploadRequestDTO inputRequest, FileUploadRequestHeadersDTO requestHeaders);
         // Add other methods as needed
     }
 }
