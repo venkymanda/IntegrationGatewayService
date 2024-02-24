@@ -21,10 +21,11 @@ namespace IntegrationGatewayService.Services
         
         private readonly IServiceProvider _serviceProvider;
 
-        public AzureRelayServiceHandler(ILogger<AzureRelayServiceHandler> logger, IAzureRelayServiceHelper helper)//, IFileManipulatorTypeManager manager)
+        public AzureRelayServiceHandler(ILogger<AzureRelayServiceHandler> logger, IAzureRelayServiceHelper helper, IServiceProvider serviceProvider)//, IFileManipulatorTypeManager manager)
         {
             _logger = logger;
             _helper = helper;
+            _serviceProvider = serviceProvider;
 
         }
 
@@ -45,7 +46,8 @@ namespace IntegrationGatewayService.Services
                     {
                         case "UploadFile":
                            
-                            var fileManipulator = _serviceProvider.GetRequiredService<FileUtils>();
+                            var fileManipulator = _serviceProvider.GetRequiredService<IEnumerable<IFileManipulator>>()
+                                                                    .FirstOrDefault(x => x.GetType() == typeof(FileUtils));
                             await fileManipulator.ManipulateFileAsync(context, (FileUploadRequestDTO)request,(FileUploadRequestHeadersDTO)headers);
                             break;
                         case "DownloadFile":
