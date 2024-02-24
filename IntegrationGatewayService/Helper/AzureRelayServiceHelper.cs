@@ -114,25 +114,69 @@ namespace SampleWorkerApp.Helper
         }
 
         // Decompression method (customize as needed)
-        public Stream Decompress(Stream compressedData)
+        /*public byte[] Decompress(Stream compressedData)
         {
-            GZipStream decompressionStream;
-            // Example using GZipStream for GZip compression
-            using (Stream compressedStream = compressedData)
+            GZipStream decompressionStream = null;
+            try
             {
-                using (MemoryStream decompressedStream = new MemoryStream())
+                using (Stream compressedStream = new MemoryStream())
                 {
-                    using (decompressionStream = new GZipStream(compressedStream, CompressionMode.Decompress))
+                    byte[] buffer = new byte[4096];
+                    int bytesRead;
+
+                    while ((bytesRead = compressedData.Read(buffer, 0, buffer.Length)) > 0)
                     {
-                        decompressionStream.CopyTo(decompressedStream);
+                        compressedStream.Write(buffer, 0, bytesRead);
                     }
 
-                    // Reset the position of the decompressed stream to the beginning
-                    decompressedStream.Position = 0;
-                   
+                    using (MemoryStream decompressedStream = new MemoryStream())
+                    {
+                        using (decompressionStream = new GZipStream(compressedStream, CompressionMode.Decompress))
+                        {
+                            decompressionStream.CopyTo(decompressedStream);
+                        }
+
+                        // Reset the position of the decompressed stream to the beginning
+                        decompressedStream.Position = 0;
+                       
+                        return decompressedStream.ToArray();
+                    }
                 }
             }
-            return decompressionStream; // Placeholder for decompression logic
+            catch (Exception ex)
+            {
+                // Handle decompression error
+                Console.WriteLine("Error during decompression: " + ex.Message);
+                throw; // Re-throw the exception to propagate it to the caller
+            }
+            finally
+            {
+                decompressionStream?.Dispose(); // Ensure the stream is disposed
+            }
+        }*/
+
+        public  byte[] Decompress(Stream gzipStream)
+        {
+            using (MemoryStream decompressedStream = new MemoryStream())
+            {
+                using (GZipStream decompressionStream = new GZipStream(gzipStream, CompressionMode.Decompress))
+                {
+                    decompressionStream.CopyTo(decompressedStream);
+                }
+                return TrimNullBytes(decompressedStream.ToArray());
+            }
+        }
+
+        private static byte[] TrimNullBytes(byte[] bytes)
+        {
+            int length = bytes.Length;
+            while (length > 0 && bytes[length - 1] == 0)
+            {
+                length--;
+            }
+            byte[] trimmedBytes = new byte[length];
+            Array.Copy(bytes, trimmedBytes, length);
+            return trimmedBytes;
         }
 
         public (IRequestHeaders, IInputRequest) ExtractRequestFromContext(RelayedHttpListenerContext context)

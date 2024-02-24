@@ -32,7 +32,7 @@ namespace SampleWorkerApp.Helper
         public Task WriteToContextResponse(RelayedHttpListenerContext context, string message, HttpStatusCode statusCode = HttpStatusCode.OK);
 
 
-        public Stream Decompress(Stream compressedData);
+        public byte[] Decompress(Stream compressedData);
 
         (IRequestHeaders, IInputRequest) ExtractRequestFromContext(RelayedHttpListenerContext relayedHttpListenerContext);
     }

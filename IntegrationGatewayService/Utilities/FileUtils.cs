@@ -39,34 +39,48 @@ namespace IntegrationGatewayService.Utilities
                 string fileId               = requestHeaders.TransactionId; // Unique identifier for the file
                 long currentChunkSequence   = requestHeaders.ChunkSequence;
                 long chunksize              = requestHeaders.ChunkSize;
-                
+                long buffersize = 0;
                 string tempDirectory = Path.Combine(Path.GetTempPath(),"ChunkFiles",fileId);
 
                 // Define a unique filename for the chunk based on the fileId and sequence
                 string chunkFileName = Path.Combine(tempDirectory, $"{fileId}_{currentChunkSequence}.chunk");
 
+                // Ensure directory exists
+                string directoryPath = Path.GetDirectoryName(chunkFileName);
+                if (!Directory.Exists(directoryPath))
+                {
+                    Directory.CreateDirectory(directoryPath);
+                }
                 // Save the received chunk data to the temporary file
                 using (FileStream chunkFileStream = File.Create(chunkFileName))
                 {
-                    byte[] buffer = new byte[chunksize]; // Adjust the buffer size as needed
-                    int bytesRead;
-                    while ((bytesRead = _helper.Decompress(context.Request.InputStream).Read(buffer, 0, buffer.Length)) > 0)
+                    
+                   
+                    using (Stream decompressedStream = new MemoryStream( _helper.Decompress(context.Request.InputStream)))
                     {
-                        // Write the received chunk to the temporary file
-                        chunkFileStream.Write(buffer, 0, bytesRead);
+                        buffersize = decompressedStream.Length;
+                        byte[] buffer = new byte[buffersize]; // Adjust the buffer size as needed
+                        int bytesRead;
+
+                        while ((bytesRead = decompressedStream.Read(buffer, 0, buffer.Length)) > 0)
+                        {
+                            // Write the received chunk to the temporary file
+                            chunkFileStream.Write(buffer, 0, bytesRead);
+                        }
                     }
+                   
                 }
 
                 // Check if all expected chunks are received to assemble the complete file
-                if (CheckIfAllChunksReceived(fileId, totalFileSize,chunksize, tempDirectory))
+                if (CheckIfAllChunksReceived(fileId, totalFileSize, chunksize, tempDirectory))
                 {
 
                     string filePath = fileUploadRequest.DestinationPath; // Specify the file path
 
-                    AssembleCompleteFile(fileId, totalFileSize, tempDirectory, chunksize,filePath);
+                    AssembleCompleteFile(fileId, totalFileSize, tempDirectory, chunksize, filePath);
 
                     // Cleanup temporary chunk files
-                    CleanUpChunks(fileId,tempDirectory);
+                    CleanUpChunks(fileId, tempDirectory);
 
                     _logger.LogInformation("File received completely.");
 
@@ -76,10 +90,12 @@ namespace IntegrationGatewayService.Utilities
 
                     // All chunks received and processed successfully
                 }
-
-                // Respond with a success message for the received chunk
-                string successChunkMessage = "File chunk received successfully.";
-                await _helper.WriteToContextResponse(context, successChunkMessage, HttpStatusCode.OK);
+                else
+                {
+                    // Respond with a success message for the received chunk
+                    string successChunkMessage = "File chunk received successfully.";
+                    await _helper.WriteToContextResponse(context, successChunkMessage, HttpStatusCode.OK);
+                }
                 // Not all chunks received yet
             }
             catch (Exception ex)
@@ -102,7 +118,7 @@ namespace IntegrationGatewayService.Utilities
                 List<(string FileName, long Sequence)> chunkFiles = new List<(string, long)>();
 
                 // Iterate through the temporary chunk files and add them to the list
-                for (long currentChunkSequence = 0; currentChunkSequence < totalFileSize / ChunkSize; currentChunkSequence++)
+                for (long currentChunkSequence = 0; currentChunkSequence <= totalFileSize / ChunkSize; currentChunkSequence++)
                 {
                     // Define the filename for the current chunk based on fileId and sequence
                     string chunkFileName = Path.Combine(tempDirectory, $"{fileId}_{currentChunkSequence}.chunk");
@@ -123,7 +139,7 @@ namespace IntegrationGatewayService.Utilities
                     // Read the chunk data from the file and write it to the completeFileStream
                     using (FileStream chunkFileStream = File.OpenRead(chunkFileName))
                     {
-                        byte[] buffer = new byte[8192]; // Adjust the buffer size as needed
+                        byte[] buffer = new byte[ChunkSize]; // Adjust the buffer size as needed
                         int bytesRead;
                         while ((bytesRead = chunkFileStream.Read(buffer, 0, buffer.Length)) > 0)
                         {
